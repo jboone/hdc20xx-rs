@@ -15,8 +15,14 @@ edition = "2018"
 [badges]
 coveralls = { repository = "eldruin/hdc20xx-rs", branch = "master", service = "github" }
 
+[features]
+default = ["async"]
+
+async = []
+
 [dependencies]
 embedded-hal = "0.2.4"
+embedded-hal-async = { version = "1.0.0", default-features = false }
 nb = "1"
 
 [dev-dependencies]

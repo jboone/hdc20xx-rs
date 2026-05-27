@@ -1,5 +1,10 @@
 use crate::{Error, Hdc20xx};
+
+#[cfg(not(feature = "async"))]
 use embedded_hal::blocking::i2c;
+
+#[cfg(feature = "async")]
+use embedded_hal_async::i2c as async_i2c;
 
 pub const BASE_ADDR: u8 = 0x40;
 
@@ -24,6 +29,7 @@ impl BitFlags {
     pub const HL_STATUS: u8 = 1 << 3;
 }
 
+#[cfg(not(feature = "async"))]
 impl<I2C, E, MODE> Hdc20xx<I2C, MODE>
 where
     I2C: i2c::Write<Error = E>,
@@ -35,6 +41,19 @@ where
     }
 }
 
+#[cfg(feature = "async")]
+impl<I2C, E, MODE> Hdc20xx<I2C, MODE>
+where
+    I2C: async_i2c::I2c<Error = E>,
+{
+    pub(crate) async fn write_register(&mut self, register: u8, data: u8) -> Result<(), Error<E>> {
+        let payload: [u8; 2] = [register, data];
+        let addr = self.address;
+        self.i2c.write(addr, &payload).await.map_err(Error::I2C)
+    }
+}
+
+#[cfg(not(feature = "async"))]
 impl<I2C, E, MODE> Hdc20xx<I2C, MODE>
 where
     I2C: i2c::WriteRead<Error = E>,
@@ -55,5 +74,28 @@ where
         self.i2c
             .write_read(addr, &[register], data)
             .map_err(Error::I2C)
+    }
+}
+
+impl<I2C, E, MODE> Hdc20xx<I2C, MODE>
+where
+    I2C: async_i2c::I2c<Error = E>,
+{
+    pub(crate) async fn read_double_register(&mut self, register: u8) -> Result<u16, Error<E>> {
+        let mut data = [0, 0];
+        self.read_data(register, &mut data)
+            .await.and(Ok(u16::from(data[0]) | (u16::from(data[1]) << 8)))
+    }
+
+    pub(crate) async fn read_register(&mut self, register: u8) -> Result<u8, Error<E>> {
+        let mut data = [0];
+        self.read_data(register, &mut data).await.and(Ok(data[0]))
+    }
+
+    pub(crate) async fn read_data(&mut self, register: u8, data: &mut [u8]) -> Result<(), Error<E>> {
+        let addr = self.address;
+        self.i2c
+            .write_read(addr, &[register], data)
+            .await.map_err(Error::I2C)
     }
 }
