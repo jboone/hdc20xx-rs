@@ -42,7 +42,7 @@ where
 }
 
 #[cfg(feature = "async")]
-impl<I2C, E, MODE> Hdc20xx<I2C, MODE>
+impl<I2C, E, MODE, DELAY> Hdc20xx<I2C, MODE, DELAY>
 where
     I2C: async_i2c::I2c<Error = E>,
 {
@@ -77,7 +77,7 @@ where
     }
 }
 
-impl<I2C, E, MODE> Hdc20xx<I2C, MODE>
+impl<I2C, E, MODE, DELAY> Hdc20xx<I2C, MODE, DELAY>
 where
     I2C: async_i2c::I2c<Error = E>,
 {

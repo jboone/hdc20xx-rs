@@ -144,12 +144,24 @@ mod register_address;
 use crate::register_address::{BitFlags, Register, BASE_ADDR};
 
 /// HDC2080, HDC2021 and HDC2010 device driver
+#[cfg(feature = "blocking")]
 #[derive(Debug)]
 pub struct Hdc20xx<I2C, MODE> {
     i2c: I2C,
     address: u8,
     meas_config: Config,
     was_measurement_started: bool,
+    _mode: PhantomData<MODE>,
+}
+
+/// HDC2080, HDC2021 and HDC2010 device driver
+#[cfg(feature = "async")]
+#[derive(Debug)]
+pub struct Hdc20xx<I2C, MODE, DELAY> {
+    i2c: I2C,
+    address: u8,
+    meas_config: Config,
+    delay: DELAY,
     _mode: PhantomData<MODE>,
 }
 

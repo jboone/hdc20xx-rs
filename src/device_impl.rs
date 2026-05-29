@@ -4,12 +4,13 @@ use crate::{
 };
 use core::marker::PhantomData;
 
-#[cfg(not(feature = "async"))]
+#[cfg(feature = "blocking")]
 use embedded_hal::blocking::i2c;
 
 #[cfg(feature = "async")]
-use embedded_hal_async::i2c as async_i2c;
+use embedded_hal_async::{delay::DelayNs, i2c};
 
+#[cfg(feature = "blocking")]
 impl<I2C> Hdc20xx<I2C, mode::OneShot> {
     /// Create new instance of the device.
     pub fn new(i2c: I2C, address: SlaveAddr) -> Self {
@@ -23,14 +24,34 @@ impl<I2C> Hdc20xx<I2C, mode::OneShot> {
     }
 }
 
-impl<I2C, MODE> Hdc20xx<I2C, MODE> {
+#[cfg(feature = "async")]
+impl<I2C, DELAY> Hdc20xx<I2C, mode::OneShot, DELAY>
+where
+    DELAY: DelayNs,
+{
+    /// Create new instance of the device.
+    pub fn new(i2c: I2C, address: SlaveAddr, delay: DELAY) -> Self {
+        Hdc20xx {
+            i2c,
+            address: address.addr(),
+            meas_config: Config { bits: 0 },
+            #[cfg(feature = "blocking")]
+            was_measurement_started: false,
+            #[cfg(feature = "async")]
+            delay,
+            _mode: PhantomData,
+        }
+    }
+}
+
+impl<I2C, MODE, DELAY> Hdc20xx<I2C, MODE, DELAY> {
     /// Destroy driver instance, return I2C bus.
     pub fn destroy(self) -> I2C {
         self.i2c
     }
 }
 
-#[cfg(not(feature = "async"))]
+#[cfg(feature = "blocking")]
 impl<I2C, E, MODE> Hdc20xx<I2C, MODE>
 where
     I2C: i2c::WriteRead<Error = E> + i2c::Write<Error = E>,
@@ -72,9 +93,9 @@ where
 }
 
 #[cfg(feature = "async")]
-impl<I2C, E, MODE> Hdc20xx<I2C, MODE>
+impl<I2C, E, MODE, DELAY> Hdc20xx<I2C, MODE, DELAY>
 where
-    I2C: async_i2c::I2c<Error = E>,
+    I2C: i2c::I2c<Error = E>,
 {
     /// Set measurement mode
     pub async fn set_measurement_mode(&mut self, mode: MeasurementMode) -> Result<(), Error<E>> {
@@ -112,7 +133,7 @@ where
     }
 }
 
-#[cfg(not(feature = "async"))]
+#[cfg(feature = "blocking")]
 impl<I2C, E> Hdc20xx<I2C, mode::OneShot>
 where
     I2C: i2c::WriteRead<Error = E> + i2c::Write<Error = E>,
@@ -170,52 +191,54 @@ where
 }
 
 #[cfg(feature = "async")]
-impl<I2C, E> Hdc20xx<I2C, mode::OneShot>
+impl<I2C, E, DELAY> Hdc20xx<I2C, mode::OneShot, DELAY>
 where
-    I2C: async_i2c::I2c<Error = E>,
+    I2C: i2c::I2c<Error = E>,
+    DELAY: DelayNs,
 {
     /// Make measurement of temperature or temperature and humidity according
     /// to the configuration.
     ///
     /// Note that all status except the last one once data becomes available
     /// are discarded.
-    pub async fn read(&mut self) -> nb::Result<Measurement, Error<E>> {
-        if self.was_measurement_started {
-            let status = self.status().await?;
-            if status.data_ready {
-                let include_humidity = !self.meas_config.is_high(BitFlags::TEMP_ONLY);
-                let mut data = [0; 4];
-                if include_humidity {
-                    self.read_data(Register::TEMP_L, &mut data).await?;
-                } else {
-                    self.read_data(Register::TEMP_L, &mut data[..2]).await?;
-                }
-                self.was_measurement_started = false;
-                let temp_raw = u16::from(data[0]) | (u16::from(data[1]) << 8);
-                let temp = f32::from(temp_raw) / 65536.0 * 165.0 - 40.0;
-                if include_humidity {
-                    let rh_raw = u16::from(data[2]) | (u16::from(data[3]) << 8);
-                    let rh = f32::from(rh_raw) / 65536.0 * 100.0;
-                    Ok(Measurement {
-                        temperature: temp,
-                        humidity: Some(rh),
-                        status,
-                    })
-                } else {
-                    Ok(Measurement {
-                        temperature: temp,
-                        humidity: None,
-                        status,
-                    })
-                }
-            } else {
-                Err(nb::Error::WouldBlock)
-            }
+    pub async fn trigger_measurement(&mut self) -> Result<Measurement, Error<E>> {
+        let meas_conf = self.meas_config.with_high(BitFlags::MEAS_TRIG);
+        self.write_register(Register::MEAS_CONF, meas_conf.bits).await?;
+
+        // Delay is maximum of typical conversion time for 9-bit, 11-bit, and 14-bit accuracy.
+        self.delay.delay_us(660).await;
+
+        let status = self.status().await?;
+        if !status.data_ready {
+            return Err(Error::MeasurementTimeout);
+        }
+
+        let include_humidity = !self.meas_config.is_high(BitFlags::TEMP_ONLY);
+
+        let mut data = [0; 4];
+        if include_humidity {
+            self.read_data(Register::TEMP_L, &mut data).await?;
         } else {
-            let meas_conf = self.meas_config.with_high(BitFlags::MEAS_TRIG);
-            self.write_register(Register::MEAS_CONF, meas_conf.bits).await?;
-            self.was_measurement_started = true;
-            Err(nb::Error::WouldBlock)
+            self.read_data(Register::TEMP_L, &mut data[..2]).await?;
+        }
+
+        let temp_raw = u16::from(data[0]) | (u16::from(data[1]) << 8);
+        let temp = f32::from(temp_raw) / 65536.0 * 165.0 - 40.0;
+
+        if include_humidity {
+            let rh_raw = u16::from(data[2]) | (u16::from(data[3]) << 8);
+            let rh = f32::from(rh_raw) / 65536.0 * 100.0;
+            Ok(Measurement {
+                temperature: temp,
+                humidity: Some(rh),
+                status,
+            })
+        } else {
+            Ok(Measurement {
+                temperature: temp,
+                humidity: None,
+                status,
+            })
         }
     }
 

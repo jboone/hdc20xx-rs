@@ -7,6 +7,8 @@ pub enum Error<E> {
     I2C(E),
     /// Invalid input data provided
     InvalidInputData,
+    /// Measurement timeout
+    MeasurementTimeout,
 }
 
 /// Measurement result
