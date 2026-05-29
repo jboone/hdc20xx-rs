@@ -157,11 +157,10 @@ pub struct Hdc20xx<I2C, MODE> {
 /// HDC2080, HDC2021 and HDC2010 device driver
 #[cfg(feature = "async")]
 #[derive(Debug)]
-pub struct Hdc20xx<I2C, MODE, DELAY> {
+pub struct Hdc20xx<I2C, MODE> {
     i2c: I2C,
     address: u8,
     meas_config: Config,
-    delay: DELAY,
     _mode: PhantomData<MODE>,
 }
 

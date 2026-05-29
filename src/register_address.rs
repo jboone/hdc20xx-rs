@@ -4,7 +4,7 @@ use crate::{Error, Hdc20xx};
 use embedded_hal::blocking::i2c;
 
 #[cfg(feature = "async")]
-use embedded_hal_async::i2c as async_i2c;
+use embedded_hal_async::i2c;
 
 pub const BASE_ADDR: u8 = 0x40;
 
@@ -42,9 +42,9 @@ where
 }
 
 #[cfg(feature = "async")]
-impl<I2C, E, MODE, DELAY> Hdc20xx<I2C, MODE, DELAY>
+impl<I2C, E, MODE> Hdc20xx<I2C, MODE>
 where
-    I2C: async_i2c::I2c<Error = E>,
+    I2C: i2c::I2c<Error = E>,
 {
     pub(crate) async fn write_register(&mut self, register: u8, data: u8) -> Result<(), Error<E>> {
         let payload: [u8; 2] = [register, data];
@@ -77,9 +77,9 @@ where
     }
 }
 
-impl<I2C, E, MODE, DELAY> Hdc20xx<I2C, MODE, DELAY>
+impl<I2C, E, MODE> Hdc20xx<I2C, MODE>
 where
-    I2C: async_i2c::I2c<Error = E>,
+    I2C: i2c::I2c<Error = E>,
 {
     pub(crate) async fn read_double_register(&mut self, register: u8) -> Result<u16, Error<E>> {
         let mut data = [0, 0];

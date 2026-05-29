@@ -8,7 +8,7 @@ use core::marker::PhantomData;
 use embedded_hal::blocking::i2c;
 
 #[cfg(feature = "async")]
-use embedded_hal_async::{delay::DelayNs, i2c};
+use embedded_hal_async::i2c;
 
 #[cfg(feature = "blocking")]
 impl<I2C> Hdc20xx<I2C, mode::OneShot> {
@@ -25,26 +25,19 @@ impl<I2C> Hdc20xx<I2C, mode::OneShot> {
 }
 
 #[cfg(feature = "async")]
-impl<I2C, DELAY> Hdc20xx<I2C, mode::OneShot, DELAY>
-where
-    DELAY: DelayNs,
-{
+impl<I2C> Hdc20xx<I2C, mode::OneShot> {
     /// Create new instance of the device.
-    pub fn new(i2c: I2C, address: SlaveAddr, delay: DELAY) -> Self {
+    pub fn new(i2c: I2C, address: SlaveAddr) -> Self {
         Hdc20xx {
             i2c,
             address: address.addr(),
             meas_config: Config { bits: 0 },
-            #[cfg(feature = "blocking")]
-            was_measurement_started: false,
-            #[cfg(feature = "async")]
-            delay,
             _mode: PhantomData,
         }
     }
 }
 
-impl<I2C, MODE, DELAY> Hdc20xx<I2C, MODE, DELAY> {
+impl<I2C, MODE> Hdc20xx<I2C, MODE> {
     /// Destroy driver instance, return I2C bus.
     pub fn destroy(self) -> I2C {
         self.i2c
@@ -93,7 +86,7 @@ where
 }
 
 #[cfg(feature = "async")]
-impl<I2C, E, MODE, DELAY> Hdc20xx<I2C, MODE, DELAY>
+impl<I2C, E, MODE> Hdc20xx<I2C, MODE>
 where
     I2C: i2c::I2c<Error = E>,
 {
@@ -191,23 +184,20 @@ where
 }
 
 #[cfg(feature = "async")]
-impl<I2C, E, DELAY> Hdc20xx<I2C, mode::OneShot, DELAY>
+impl<I2C, E> Hdc20xx<I2C, mode::OneShot>
 where
     I2C: i2c::I2c<Error = E>,
-    DELAY: DelayNs,
 {
     /// Make measurement of temperature or temperature and humidity according
     /// to the configuration.
-    ///
+    pub async fn trigger_measurement(&mut self) -> Result<(), Error<E>> {
+        let meas_conf = self.meas_config.with_high(BitFlags::MEAS_TRIG);
+        self.write_register(Register::MEAS_CONF, meas_conf.bits).await
+    }
+
     /// Note that all status except the last one once data becomes available
     /// are discarded.
-    pub async fn trigger_measurement(&mut self) -> Result<Measurement, Error<E>> {
-        let meas_conf = self.meas_config.with_high(BitFlags::MEAS_TRIG);
-        self.write_register(Register::MEAS_CONF, meas_conf.bits).await?;
-
-        // Delay is maximum of typical conversion time for 9-bit, 11-bit, and 14-bit accuracy.
-        self.delay.delay_us(660).await;
-
+    pub async fn get_measurement(&mut self) -> Result<Measurement, Error<E>> {
         let status = self.status().await?;
         if !status.data_ready {
             return Err(Error::MeasurementTimeout);
