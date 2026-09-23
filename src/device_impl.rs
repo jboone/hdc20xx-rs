@@ -117,7 +117,7 @@ where
     /// Software reset
     pub fn software_reset(&mut self) -> Result<(), Error<E>> {
         let conf = self.meas_config.with_high(BitFlags::SOFT_RESET);
-        self.write_register(Register::MEAS_CONF, conf.bits)
+        self.write_register(Register::RESET_DRDY_INT_CONF, conf.bits)
     }
 }
 
