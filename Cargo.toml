@@ -17,7 +17,6 @@ coveralls = { repository = "eldruin/hdc20xx-rs", branch = "master", service = "g
 
 [dependencies]
 embedded-hal-async = "1.0.0"
-nb = "1"
 
 [dev-dependencies]
 linux-embedded-hal = "0.3"

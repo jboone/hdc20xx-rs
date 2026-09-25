@@ -7,6 +7,8 @@ pub enum Error<E> {
     I2C(E),
     /// Invalid input data provided
     InvalidInputData,
+    /// Tried to read measurement before data was ready.
+    DataNotReady,
 }
 
 /// Measurement result

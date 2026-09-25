@@ -149,7 +149,6 @@ pub struct Hdc20xx<I2C, MODE> {
     i2c: I2C,
     address: u8,
     meas_config: Config,
-    was_measurement_started: bool,
     _mode: PhantomData<MODE>,
 }
 

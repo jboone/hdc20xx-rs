@@ -12,7 +12,6 @@ impl<I2C> Hdc20xx<I2C, mode::OneShot> {
             i2c,
             address: address.addr(),
             meas_config: Config { bits: 0 },
-            was_measurement_started: false,
             _mode: PhantomData,
         }
     }
@@ -69,48 +68,46 @@ impl<I2C> Hdc20xx<I2C, mode::OneShot>
 where
     I2C: i2c::I2c,
 {
+    /// Trigger a measurement according to current configuration.
+    pub async fn trigger(&mut self) -> Result<(), Error<I2C::Error>> {
+        let meas_conf = self.meas_config.with_high(BitFlags::MEAS_TRIG);
+        self.write_register(Register::MEAS_CONF, meas_conf.bits).await
+    }
+
     /// Make measurement of temperature or temperature and humidity according
     /// to the configuration.
     ///
     /// Note that all status except the last one once data becomes available
     /// are discarded.
-    pub async fn read(&mut self) -> nb::Result<Measurement, Error<I2C::Error>> {
-        if self.was_measurement_started {
-            let status = self.status().await?;
-            if status.data_ready {
-                let include_humidity = !self.meas_config.is_high(BitFlags::TEMP_ONLY);
-                let mut data = [0; 4];
-                if include_humidity {
-                    self.read_data(Register::TEMP_L, &mut data).await?;
-                } else {
-                    self.read_data(Register::TEMP_L, &mut data[..2]).await?;
-                }
-                self.was_measurement_started = false;
-                let temp_raw = u16::from(data[0]) | (u16::from(data[1]) << 8);
-                let temp = f32::from(temp_raw) / 65536.0 * 165.0 - 40.0;
-                if include_humidity {
-                    let rh_raw = u16::from(data[2]) | (u16::from(data[3]) << 8);
-                    let rh = f32::from(rh_raw) / 65536.0 * 100.0;
-                    Ok(Measurement {
-                        temperature: temp,
-                        humidity: Some(rh),
-                        status,
-                    })
-                } else {
-                    Ok(Measurement {
-                        temperature: temp,
-                        humidity: None,
-                        status,
-                    })
-                }
+    pub async fn read(&mut self) -> Result<Measurement, Error<I2C::Error>> {
+        let status = self.status().await?;
+        if status.data_ready {
+            let include_humidity = !self.meas_config.is_high(BitFlags::TEMP_ONLY);
+            let mut data = [0; 4];
+            if include_humidity {
+                self.read_data(Register::TEMP_L, &mut data).await?;
             } else {
-                Err(nb::Error::WouldBlock)
+                self.read_data(Register::TEMP_L, &mut data[..2]).await?;
+            }
+            let temp_raw = u16::from(data[0]) | (u16::from(data[1]) << 8);
+            let temp = f32::from(temp_raw) / 65536.0 * 165.0 - 40.0;
+            if include_humidity {
+                let rh_raw = u16::from(data[2]) | (u16::from(data[3]) << 8);
+                let rh = f32::from(rh_raw) / 65536.0 * 100.0;
+                Ok(Measurement {
+                    temperature: temp,
+                    humidity: Some(rh),
+                    status,
+                })
+            } else {
+                Ok(Measurement {
+                    temperature: temp,
+                    humidity: None,
+                    status,
+                })
             }
         } else {
-            let meas_conf = self.meas_config.with_high(BitFlags::MEAS_TRIG);
-            self.write_register(Register::MEAS_CONF, meas_conf.bits).await?;
-            self.was_measurement_started = true;
-            Err(nb::Error::WouldBlock)
+            Err(Error::DataNotReady)
         }
     }
 
