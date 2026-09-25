@@ -7,6 +7,7 @@ pub struct Register;
 impl Register {
     pub const TEMP_L: u8 = 0x00;
     pub const DRDY: u8 = 0x04;
+    pub const RESET_DRDY_INT_CONF: u8 = 0x0E;
     pub const MEAS_CONF: u8 = 0x0F;
     pub const MANUFACTURER_ID_L: u8 = 0xFC;
     pub const DEVICE_ID_L: u8 = 0xFE;
