@@ -27,10 +27,10 @@ impl<I2C, MODE> Hdc20xx<I2C, MODE> {
 
 impl<I2C, MODE> Hdc20xx<I2C, MODE>
 where
-    I2C: i2c::I2c<Error = I2C>,
+    I2C: i2c::I2c,
 {
     /// Set measurement mode
-    pub async fn set_measurement_mode(&mut self, mode: MeasurementMode) -> Result<(), Error<I2C>> {
+    pub async fn set_measurement_mode(&mut self, mode: MeasurementMode) -> Result<(), Error<I2C::Error>> {
         let config = match mode {
             MeasurementMode::TemperatureAndHumidity => {
                 self.meas_config.with_low(BitFlags::TEMP_ONLY)
@@ -43,7 +43,7 @@ where
     }
 
     /// Read data and interrupt status
-    pub async fn status(&mut self) -> Result<Status, Error<I2C>> {
+    pub async fn status(&mut self) -> Result<Status, Error<I2C::Error>> {
         let status = self.read_register(Register::DRDY).await?;
         Ok(Status {
             data_ready: (status & BitFlags::DRDY_STATUS) != 0,
@@ -55,26 +55,26 @@ where
     }
 
     /// Get device ID
-    pub async fn device_id(&mut self) -> Result<u16, Error<I2C>> {
+    pub async fn device_id(&mut self) -> Result<u16, Error<I2C::Error>> {
         self.read_double_register(Register::DEVICE_ID_L).await
     }
 
     /// Get manufacturer ID
-    pub async fn manufacturer_id(&mut self) -> Result<u16, Error<I2C>> {
+    pub async fn manufacturer_id(&mut self) -> Result<u16, Error<I2C::Error>> {
         self.read_double_register(Register::MANUFACTURER_ID_L).await
     }
 }
 
 impl<I2C> Hdc20xx<I2C, mode::OneShot>
 where
-    I2C: i2c::I2c<Error = I2C>,
+    I2C: i2c::I2c,
 {
     /// Make measurement of temperature or temperature and humidity according
     /// to the configuration.
     ///
     /// Note that all status except the last one once data becomes available
     /// are discarded.
-    pub async fn read(&mut self) -> nb::Result<Measurement, Error<I2C>> {
+    pub async fn read(&mut self) -> nb::Result<Measurement, Error<I2C::Error>> {
         if self.was_measurement_started {
             let status = self.status().await?;
             if status.data_ready {
@@ -115,7 +115,7 @@ where
     }
 
     /// Software reset
-    pub async fn software_reset(&mut self) -> Result<(), Error<I2C>> {
+    pub async fn software_reset(&mut self) -> Result<(), Error<I2C::Error>> {
         let conf = self.meas_config.with_high(BitFlags::SOFT_RESET);
         self.write_register(Register::RESET_DRDY_INT_CONF, conf.bits).await
     }

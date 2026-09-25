@@ -27,9 +27,9 @@ impl BitFlags {
 
 impl<I2C, MODE> Hdc20xx<I2C, MODE>
 where
-    I2C: i2c::I2c<Error = I2C>,
+    I2C: i2c::I2c,
 {
-    pub(crate) async fn write_register(&mut self, register: u8, data: u8) -> Result<(), Error<I2C>> {
+    pub(crate) async fn write_register(&mut self, register: u8, data: u8) -> Result<(), Error<I2C::Error>> {
         let payload: [u8; 2] = [register, data];
         let addr = self.address;
         self.i2c.write(addr, &payload).await.map_err(Error::I2C)
@@ -38,21 +38,21 @@ where
 
 impl<I2C, MODE> Hdc20xx<I2C, MODE>
 where
-    I2C: i2c::I2c<Error = I2C>,
+    I2C: i2c::I2c,
 {
-    pub(crate) async fn read_double_register(&mut self, register: u8) -> Result<u16, Error<I2C>> {
+    pub(crate) async fn read_double_register(&mut self, register: u8) -> Result<u16, Error<I2C::Error>> {
         let mut data = [0, 0];
         self.read_data(register, &mut data)
             .await
             .and(Ok(u16::from(data[0]) | (u16::from(data[1]) << 8)))
     }
 
-    pub(crate) async fn read_register(&mut self, register: u8) -> Result<u8, Error<I2C>> {
+    pub(crate) async fn read_register(&mut self, register: u8) -> Result<u8, Error<I2C::Error>> {
         let mut data = [0];
         self.read_data(register, &mut data).await.and(Ok(data[0]))
     }
 
-    pub(crate) async fn read_data(&mut self, register: u8, data: &mut [u8]) -> Result<(), Error<I2C>> {
+    pub(crate) async fn read_data(&mut self, register: u8, data: &mut [u8]) -> Result<(), Error<I2C::Error>> {
         let addr = self.address;
         self.i2c
             .write_read(addr, &[register], data)
