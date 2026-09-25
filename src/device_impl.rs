@@ -3,7 +3,7 @@ use crate::{
     Status,
 };
 use core::marker::PhantomData;
-use embedded_hal::blocking::i2c;
+use embedded_hal_async::i2c;
 
 impl<I2C> Hdc20xx<I2C, mode::OneShot> {
     /// Create new instance of the device.
@@ -25,26 +25,26 @@ impl<I2C, MODE> Hdc20xx<I2C, MODE> {
     }
 }
 
-impl<I2C, E, MODE> Hdc20xx<I2C, MODE>
+impl<I2C, MODE> Hdc20xx<I2C, MODE>
 where
-    I2C: i2c::WriteRead<Error = E> + i2c::Write<Error = E>,
+    I2C: i2c::I2c<Error = I2C>,
 {
     /// Set measurement mode
-    pub fn set_measurement_mode(&mut self, mode: MeasurementMode) -> Result<(), Error<E>> {
+    pub async fn set_measurement_mode(&mut self, mode: MeasurementMode) -> Result<(), Error<I2C>> {
         let config = match mode {
             MeasurementMode::TemperatureAndHumidity => {
                 self.meas_config.with_low(BitFlags::TEMP_ONLY)
             }
             MeasurementMode::TemperatureOnly => self.meas_config.with_high(BitFlags::TEMP_ONLY),
         };
-        self.write_register(Register::MEAS_CONF, config.bits)?;
+        self.write_register(Register::MEAS_CONF, config.bits).await?;
         self.meas_config = config;
         Ok(())
     }
 
     /// Read data and interrupt status
-    pub fn status(&mut self) -> Result<Status, Error<E>> {
-        let status = self.read_register(Register::DRDY)?;
+    pub async fn status(&mut self) -> Result<Status, Error<I2C>> {
+        let status = self.read_register(Register::DRDY).await?;
         Ok(Status {
             data_ready: (status & BitFlags::DRDY_STATUS) != 0,
             high_temp_threshold_exceeded: (status & BitFlags::TH_STATUS) != 0,
@@ -55,35 +55,35 @@ where
     }
 
     /// Get device ID
-    pub fn device_id(&mut self) -> Result<u16, Error<E>> {
-        self.read_double_register(Register::DEVICE_ID_L)
+    pub async fn device_id(&mut self) -> Result<u16, Error<I2C>> {
+        self.read_double_register(Register::DEVICE_ID_L).await
     }
 
     /// Get manufacturer ID
-    pub fn manufacturer_id(&mut self) -> Result<u16, Error<E>> {
-        self.read_double_register(Register::MANUFACTURER_ID_L)
+    pub async fn manufacturer_id(&mut self) -> Result<u16, Error<I2C>> {
+        self.read_double_register(Register::MANUFACTURER_ID_L).await
     }
 }
 
-impl<I2C, E> Hdc20xx<I2C, mode::OneShot>
+impl<I2C> Hdc20xx<I2C, mode::OneShot>
 where
-    I2C: i2c::WriteRead<Error = E> + i2c::Write<Error = E>,
+    I2C: i2c::I2c<Error = I2C>,
 {
     /// Make measurement of temperature or temperature and humidity according
     /// to the configuration.
     ///
     /// Note that all status except the last one once data becomes available
     /// are discarded.
-    pub fn read(&mut self) -> nb::Result<Measurement, Error<E>> {
+    pub async fn read(&mut self) -> nb::Result<Measurement, Error<I2C>> {
         if self.was_measurement_started {
-            let status = self.status()?;
+            let status = self.status().await?;
             if status.data_ready {
                 let include_humidity = !self.meas_config.is_high(BitFlags::TEMP_ONLY);
                 let mut data = [0; 4];
                 if include_humidity {
-                    self.read_data(Register::TEMP_L, &mut data)?;
+                    self.read_data(Register::TEMP_L, &mut data).await?;
                 } else {
-                    self.read_data(Register::TEMP_L, &mut data[..2])?;
+                    self.read_data(Register::TEMP_L, &mut data[..2]).await?;
                 }
                 self.was_measurement_started = false;
                 let temp_raw = u16::from(data[0]) | (u16::from(data[1]) << 8);
@@ -108,16 +108,16 @@ where
             }
         } else {
             let meas_conf = self.meas_config.with_high(BitFlags::MEAS_TRIG);
-            self.write_register(Register::MEAS_CONF, meas_conf.bits)?;
+            self.write_register(Register::MEAS_CONF, meas_conf.bits).await?;
             self.was_measurement_started = true;
             Err(nb::Error::WouldBlock)
         }
     }
 
     /// Software reset
-    pub fn software_reset(&mut self) -> Result<(), Error<E>> {
+    pub async fn software_reset(&mut self) -> Result<(), Error<I2C>> {
         let conf = self.meas_config.with_high(BitFlags::SOFT_RESET);
-        self.write_register(Register::RESET_DRDY_INT_CONF, conf.bits)
+        self.write_register(Register::RESET_DRDY_INT_CONF, conf.bits).await
     }
 }
 

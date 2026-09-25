@@ -52,7 +52,7 @@
 //! ### Make a one-shot temperature and humidity measurement
 //!
 //! ```no_run
-//! use embedded_hal::blocking::delay::DelayMs;
+//! use embedded_hal::asynch::delay::DelayMs;
 //! use hdc20xx::{Hdc20xx, SlaveAddr};
 //! use linux_embedded_hal::{Delay, I2cdev};
 //!

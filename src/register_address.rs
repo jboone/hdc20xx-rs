@@ -1,5 +1,5 @@
 use crate::{Error, Hdc20xx};
-use embedded_hal::blocking::i2c;
+use embedded_hal_async::i2c;
 
 pub const BASE_ADDR: u8 = 0x40;
 
@@ -25,36 +25,38 @@ impl BitFlags {
     pub const HL_STATUS: u8 = 1 << 3;
 }
 
-impl<I2C, E, MODE> Hdc20xx<I2C, MODE>
+impl<I2C, MODE> Hdc20xx<I2C, MODE>
 where
-    I2C: i2c::Write<Error = E>,
+    I2C: i2c::I2c<Error = I2C>,
 {
-    pub(crate) fn write_register(&mut self, register: u8, data: u8) -> Result<(), Error<E>> {
+    pub(crate) async fn write_register(&mut self, register: u8, data: u8) -> Result<(), Error<I2C>> {
         let payload: [u8; 2] = [register, data];
         let addr = self.address;
-        self.i2c.write(addr, &payload).map_err(Error::I2C)
+        self.i2c.write(addr, &payload).await.map_err(Error::I2C)
     }
 }
 
-impl<I2C, E, MODE> Hdc20xx<I2C, MODE>
+impl<I2C, MODE> Hdc20xx<I2C, MODE>
 where
-    I2C: i2c::WriteRead<Error = E>,
+    I2C: i2c::I2c<Error = I2C>,
 {
-    pub(crate) fn read_double_register(&mut self, register: u8) -> Result<u16, Error<E>> {
+    pub(crate) async fn read_double_register(&mut self, register: u8) -> Result<u16, Error<I2C>> {
         let mut data = [0, 0];
         self.read_data(register, &mut data)
+            .await
             .and(Ok(u16::from(data[0]) | (u16::from(data[1]) << 8)))
     }
 
-    pub(crate) fn read_register(&mut self, register: u8) -> Result<u8, Error<E>> {
+    pub(crate) async fn read_register(&mut self, register: u8) -> Result<u8, Error<I2C>> {
         let mut data = [0];
-        self.read_data(register, &mut data).and(Ok(data[0]))
+        self.read_data(register, &mut data).await.and(Ok(data[0]))
     }
 
-    pub(crate) fn read_data(&mut self, register: u8, data: &mut [u8]) -> Result<(), Error<E>> {
+    pub(crate) async fn read_data(&mut self, register: u8, data: &mut [u8]) -> Result<(), Error<I2C>> {
         let addr = self.address;
         self.i2c
             .write_read(addr, &[register], data)
+            .await
             .map_err(Error::I2C)
     }
 }
